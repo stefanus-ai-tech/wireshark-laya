@@ -1,0 +1,3 @@
+pcap,label
+captures/isolated/normal-local.pcapng,normal
+captures/isolated/scan-local.pcapng,port_scan

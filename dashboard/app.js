@@ -37,7 +37,7 @@ function render() {
     const date = Number.isFinite(Number(row.start_epoch)) ? new Date(Number(row.start_epoch)*1000).toLocaleString('id-ID') : '—';
     const known = labels.includes(row.label), correct = p.activity === row.label;
     const outcome = known ? `<span class="tag ${correct?'good':'bad'}">${correct?'Benar':'Salah'}</span>` : '—';
-    return `<tr><td>${esc(date)}</td><td title="${esc(row.pcap)}">${esc(String(row.pcap||'').split(/[\\/]/).pop())}</td><td>${esc(row.engine)}</td><td>${esc(row.label||'—')}</td><td><span class="tag">${esc(p.activity||'—')}</span></td><td>${fmt(p.confidence)}</td><td>${fmt(p.needs_review)}</td><td>${esc(f.packet_count??'—')}</td><td>${esc(f.unique_dst_ports??'—')}</td><td>${outcome}</td></tr>`;
+    return `<tr><td>${esc(date)}</td><td title="${esc(row.pcap)}">${esc(String(row.pcap||'').split(/[\\/]/).pop())}</td><td>${esc(row.engine)}</td><td>${esc(row.label||'—')}</td><td><span class="tag">${esc(p.activity||'—')}</span></td><td>${fmt(p.confidence)}</td><td>${fmt(p.needs_review)}</td><td>${esc(f.packet_count??'—')}</td><td>${esc(f.unique_syn_dst_ports??'—')}</td><td>${outcome}</td></tr>`;
   }).join('') : '<tr><td colspan="10" class="empty-cell">Tidak ada hasil untuk filter ini.</td></tr>';
 }
 async function loadPredictions(file) {
@@ -61,3 +61,11 @@ async function loadMetrics(file) {
 $('predictions-file').addEventListener('change', event => { if (event.target.files[0]) loadPredictions(event.target.files[0]); });
 $('metrics-file').addEventListener('change', event => { if (event.target.files[0]) loadMetrics(event.target.files[0]); });
 ['engine-select','status-select','search'].forEach(id => $(id).addEventListener(id === 'search' ? 'input' : 'change', render));
+if (window.NETWATCH_DATA) {
+  state.predictions = window.NETWATCH_DATA.predictions || [];
+  state.metrics = window.NETWATCH_DATA.metrics || null;
+  const engines = [...new Set(state.predictions.map(row => row.engine))].sort();
+  $('engine-select').innerHTML = '<option value="all">Semua engine</option>' + engines.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+  $('status').textContent = `${state.predictions.length} prediksi dari hasil lab dimuat`;
+  render();
+}

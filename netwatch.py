@@ -46,7 +46,7 @@ def fresh(pcap, start, seconds):
             "packet_count": 0, "bytes_total": 0, "tcp_count": 0, "udp_count": 0,
             "icmp_count": 0, "dns_query_count": 0, "syn_only_count": 0, "ack_count": 0,
             "rst_count": 0, "fin_count": 0, "_src_ips": set(), "_dst_ips": set(),
-            "_src_ports": set(), "_dst_ports": set()}
+            "_src_ports": set(), "_dst_ports": set(), "_syn_dst_ports": set()}
 
 
 def add_packet(bucket, row):
@@ -64,6 +64,8 @@ def add_packet(bucket, row):
         syn = row["tcp.flags.syn"].lower() in {"1", "true"}
         ack = row["tcp.flags.ack"].lower() in {"1", "true"}
         bucket["syn_only_count"] += int(syn and not ack)
+        if syn and not ack and row["tcp.dstport"]:
+            bucket["_syn_dst_ports"].add(row["tcp.dstport"])
         bucket["ack_count"] += int(ack)
         bucket["rst_count"] += int(row["tcp.flags.reset"].lower() in {"1", "true"})
         bucket["fin_count"] += int(row["tcp.flags.fin"].lower() in {"1", "true"})
@@ -80,7 +82,7 @@ def add_packet(bucket, row):
 
 def finish(bucket):
     result = {k: v for k, v in bucket.items() if not k.startswith("_")}
-    for name in ("src_ips", "dst_ips", "src_ports", "dst_ports"):
+    for name in ("src_ips", "dst_ips", "src_ports", "dst_ports", "syn_dst_ports"):
         result["unique_" + name] = len(bucket["_" + name])
     count, seconds = result["packet_count"], result["window_seconds"]
     result.update(packets_per_second=round(count / seconds, 4),
@@ -115,7 +117,7 @@ def windows(rows, pcap, seconds):
 
 def rules(feature):
     ports, syn, dns, count = (feature[k] for k in
-                              ("unique_dst_ports", "syn_only_count", "dns_query_count", "packet_count"))
+                              ("unique_syn_dst_ports", "syn_only_count", "dns_query_count", "packet_count"))
     if ports >= 20 and syn >= 20:
         activity = "port_scan"
     elif dns >= 10 and dns / max(count, 1) >= 0.4:
@@ -144,6 +146,19 @@ def write_jsonl(path, rows):
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
+
+def write_dashboard(path, predictions, report):
+    directory = Path(__file__).parent / "dashboard"
+    page = (directory / "index.html").read_text(encoding="utf-8")
+    style = (directory / "style.css").read_text(encoding="utf-8")
+    script = (directory / "app.js").read_text(encoding="utf-8")
+    data = json.dumps({"predictions": predictions, "metrics": report}, ensure_ascii=False, default=str)
+    data = data.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    page = page.replace('<link rel="stylesheet" href="style.css">', f"<style>{style}</style>")
+    page = page.replace('<script src="app.js"></script>',
+                        f"<script>window.NETWATCH_DATA={data};</script><script>{script}</script>")
+    path.write_text(page, encoding="utf-8")
 
 
 def metrics(rows, engine):
@@ -237,7 +252,7 @@ def main(argv=None):
         if args.command == "evaluate":
             columns = ("pcap", "start_epoch", "label", "engine", "activity", "correct",
                        "confidence", "suspicion_score", "needs_review", "packet_count",
-                       "unique_dst_ports", "syn_only_count", "dns_query_count")
+                       "unique_dst_ports", "unique_syn_dst_ports", "syn_only_count", "dns_query_count")
             with (args.out_dir / "predictions.csv").open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.DictWriter(handle, fieldnames=columns)
                 writer.writeheader()
@@ -250,6 +265,7 @@ def main(argv=None):
                                      "needs_review": pred["needs_review"], **{k: feat[k] for k in columns[9:]}})
             report = {engine: metrics(predictions, engine) for engine in engines}
             (args.out_dir / "metrics.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            write_dashboard(args.out_dir / "dashboard.html", predictions, report)
             print(json.dumps({k: {"samples": v["samples"], "accuracy": v["accuracy"],
                                    "macro_f1_present_classes": v["macro_f1_present_classes"]}
                               for k, v in report.items()}, indent=2))

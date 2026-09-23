@@ -59,6 +59,7 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["syn_only_count"], 2)
         self.assertEqual(result[0]["unique_dst_ports"], 2)
+        self.assertEqual(result[0]["unique_syn_dst_ports"], 2)
         self.assertEqual(result[0]["rst_tcp_ratio"], 0.5)
         self.assertEqual(result[1]["dns_query_count"], 1)
         self.assertEqual(result[1]["start_epoch"], 105)
@@ -88,6 +89,7 @@ class WindowTests(unittest.TestCase):
             prediction = json.loads((root / "out" / "predictions.jsonl").read_text())
             self.assertEqual(prediction["prediction"]["activity"], "normal")
             self.assertTrue((root / "out" / "predictions.csv").exists())
+            self.assertIn("NETWATCH_DATA", (root / "out" / "dashboard.html").read_text())
 
 
 if __name__ == "__main__":
